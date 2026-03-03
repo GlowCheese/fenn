@@ -16,7 +16,7 @@ class Trainer:
                  num_classes,
                  device="cpu",
                  return_model: str = "last",
-                 checkpoint_dir: Optional[Union[Path, str]] = None, 
+                 checkpoint_dir: Optional[Union[Path, str]] = None,
                  checkpoint_epochs: Optional[Union[int, List[int]]] = None,
                  checkpoint_name: str = "checkpoint",
                  save_best: bool = False,
@@ -45,9 +45,9 @@ class Trainer:
         self._checkpoint_epochs = checkpoint_epochs
         self._checkpoint_name = checkpoint_name
         self._save_best = save_best
-        
+
         self._best_acc = float("-inf")
-        self._best_loss = float("inf") 
+        self._best_loss = float("inf")
 
         # early stopping setup
         self._early_stopping_patience = early_stopping_patience
@@ -140,15 +140,33 @@ class Trainer:
                 predictions.extend(preds.cpu().tolist())
         return predictions
 
-    def fit(self, train_loader, val_loader=None, val_epoch: int = 5, start_epoch: int = 0):
+    def fit(self, train_loader, val_loader=None, start_epoch: int = 0):
+        """Train the model with optional validation and early stopping.
+
+        The behaviour depends on the combination of `val_loader` and
+        ``early_stopping_patience``:
+
+        * No validation loader, no early stopping: run full ``epochs``.
+        * No validation loader, early stopping set: stop on training loss.
+        * Validation loader provided, no early stopping: evaluate every epoch
+          but continue regardless of metrics.
+        * Validation loader provided and early stopping set: monitor
+          validation loss and stop when it plateaus.
+
+        Args:
+            train_loader: DataLoader for training data.
+            val_loader: DataLoader for validation data (optional).
+            start_epoch: Epoch to resume training from.
+
+        Returns:
+            The trained model (returned according to ``return_model``).
+        """
 
         best_state_dict = None
-
         for epoch in range(start_epoch, self._epochs):
 
-            self._logger.system_info(f"Epoch {epoch} started.")
-
             # --- TRAIN ---
+            self._logger.system_info(f"Epoch {epoch} started.")
             self._model.train()
             total_loss = 0.0
             n_batches = 0
@@ -173,30 +191,12 @@ class Trainer:
             train_mean_loss = total_loss / n_batches
             print(f"Epoch {epoch}. Train Mean Loss: {train_mean_loss:.4f}")
 
-            # --- EARLY STOPPING ---
-            if train_mean_loss < self._best_loss:
-                self._best_loss = train_mean_loss
-                self._patience_counter = 0
-            else:
-                self._patience_counter += 1
-
-            if (self._early_stopping_patience is not None
-                    and self._patience_counter >= self._early_stopping_patience):
-                self._logger.system_info(
-                    f"Early stopping triggered. "
-                    f"No improvement in train loss for {self._early_stopping_patience} epochs."
-                )
-                # Save a final checkpoint if configured
-                if self._should_save_checkpoint(epoch):
-                    self._save_checkpoint(epoch, train_mean_loss, is_best=False)
-                break
-
-            # --- OPTIONAL VALIDATION (METRICS + BEST MODEL BY VAL ACC) ---
+            # --- VALIDATION ---
             val_acc = None
-            if (val_loader is not None and
-                (epoch % val_epoch == 0 or epoch == self._epochs - 1)):
-                self._model.eval()
+            val_mean_loss = None
 
+            if val_loader is not None:
+                self._model.eval()
                 val_labels = []
                 val_predictions = []
                 val_total_loss = 0.0
@@ -213,7 +213,6 @@ class Trainer:
                         val_total_loss += float(val_batch_loss.item())
                         val_n_batches += 1
 
-                        # predictions
                         if self._num_classes == 2:
                             logits = outputs
                             preds = torch.sigmoid(logits).squeeze(-1)
@@ -231,28 +230,53 @@ class Trainer:
                     print(f"Epoch {epoch}. Validation Loss: {val_mean_loss:.4f}")
 
                 val_acc = accuracy_score(val_labels, val_predictions)
-                val_precision = precision_score(val_labels, val_predictions, average="macro", zero_division=0)
-                val_recall = recall_score(val_labels, val_predictions, average="macro", zero_division=0)
-                val_f1 = f1_score(val_labels, val_predictions, average="macro", zero_division=0)
-
                 print(f"Epoch {epoch}. Validation Accuracy: {val_acc:.4f}")
-                print(f"Epoch {epoch}. Validation Precision: {val_precision:.4f}")
-                print(f"Epoch {epoch}. Validation Recall: {val_recall:.4f}")
-                print(f"Epoch {epoch}. Validation F1 Score: {val_f1:.4f}")
 
-                # Track best model by validation accuracy (only when validation runs)
-                if self._return_model == "best" and val_acc > self._best_acc:
+                if self._return_model == "best" and val_acc is not None and val_acc > self._best_acc:
                     self._best_acc = val_acc
                     best_state_dict = copy.deepcopy(self._model.state_dict())
-
                     if self._save_best:
                         self._save_checkpoint(epoch, train_mean_loss, is_best=True)
+
+                # --- EARLY STOPPING (validation loss)---
+                if self._early_stopping_patience is not None and val_mean_loss is not None:
+                    if val_mean_loss < self._best_loss:
+                        self._best_loss = val_mean_loss
+                        self._patience_counter = 0
+                    else:
+                        self._patience_counter += 1
+
+                    if self._patience_counter >= self._early_stopping_patience:
+                        self._logger.system_info(
+                            f"Early stopping triggered. "
+                            f"No improvement in validation loss for {self._early_stopping_patience} epochs."
+                        )
+                        if self._should_save_checkpoint(epoch):
+                            self._save_checkpoint(epoch, train_mean_loss, is_best=False)
+                        break
+
+            # --- NO VALIDATION ---
+            else:
+                if self._early_stopping_patience is not None:
+                    # --- EARLY STOPPING (training loss)---
+                    if train_mean_loss < self._best_loss:
+                        self._best_loss = train_mean_loss
+                        self._patience_counter = 0
+                    else:
+                        self._patience_counter += 1
+                    if self._patience_counter >= self._early_stopping_patience:
+                        self._logger.system_info(
+                            f"Early stopping triggered. "
+                            f"No improvement in training loss for {self._early_stopping_patience} epochs."
+                        )
+                        if self._should_save_checkpoint(epoch):
+                            self._save_checkpoint(epoch, train_mean_loss, is_best=False)
+                        break
 
             # --- CHECKPOINTING ---
             if self._should_save_checkpoint(epoch):
                 self._save_checkpoint(epoch, train_mean_loss, is_best=False)
 
-        # --- LOAD BEST (BY VAL ACC) IF REQUESTED ---
         if self._return_model == "best" and val_loader is not None and best_state_dict is not None:
             self._model.load_state_dict(best_state_dict)
         elif self._return_model == "best" and val_loader is None:
@@ -261,7 +285,6 @@ class Trainer:
             )
 
         return self._model
-
 
     def predict(self, data_loader):
         if self._num_classes == 2:
