@@ -4,13 +4,14 @@ import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
+from fenn.logging.backends.baseLogger import baseLogger
 
 from colorama import Fore, Style
 
 # ==========================================================
 # CUSTOM LOGGING BACKEND (file + print override)
 # ==========================================================
-class LoggingBackend:
+class LoggingBackend(baseLogger):
     def __init__(self) -> None:
         self._original_print = builtins.print
         self._log_file: Optional[Path] = None
