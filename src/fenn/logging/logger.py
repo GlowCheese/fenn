@@ -36,7 +36,6 @@ class Logger:
 
         self._logging_backend = LoguruBackend() if _LOGURU_AVAILABLE else LoggingBackend()
 
-        self._logging_backend = LoggingBackend()
         self._wandb_backend = WandbBackend(
             keystore=self._keystore,
             system_info=self._logging_backend.system_info,

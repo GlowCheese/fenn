@@ -1,3 +1,4 @@
+import builtins
 import os
 import sys
 from pathlib import Path
@@ -8,6 +9,7 @@ from fenn.logging.backends.baseLogger import baseLogger
 
 class LoguruBackend(baseLogger):
     def __init__(self) -> None:
+        self._original_print = builtins.print
         self._log_file: Optional[Path] = None
         self._file_handler_id: Optional[int] = None
         self._enabled = False
@@ -34,7 +36,7 @@ class LoguruBackend(baseLogger):
 
     # ---- lifecycle ----
     def start(self, args: Dict[str, Any]) -> None:
-        log_root = Path(args["logger"]["dir"]).expanduser()  
+        log_root = Path(args["logger"]["dir"]).expanduser()
         log_dir = log_root / Path(args["project"])
         log_filename = f'{args["session_id"]}.log'
         self._log_file = log_dir / log_filename
