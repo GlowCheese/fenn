@@ -5,6 +5,12 @@ from pathlib import Path
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from fenn.logging import Logger
 
+try: 
+    from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, MofNCompleteColumn
+    HAS_RICH = True
+except ImportError:
+    HAS_RICH = False
+
 class Trainer:
     """The base Trainer class"""
 
@@ -175,10 +181,29 @@ class Trainer:
         """
 
         best_state_dict = None
+        
+        if HAS_RICH:
+            progress = Progress(
+                TextColumn("[bold blue]Epoch {task.fields[epoch]}/{task.fields[total_epochs]}"),
+                BarColumn(),
+                MofNCompleteColumn(),
+                TimeElapsedColumn(),
+                TextColumn("{task.fields[info]}"),
+            )
+            progress.start()
+            epoch_task = progress.add_task(
+                "Training",
+                total = self._epochs - start_epoch,
+                epoch = start_epoch,
+                total_epochs = self._epochs,
+                info=""
+            )
+            
         for epoch in range(start_epoch, self._epochs):
 
             # --- TRAIN ---
-            self._logger.system_info(f"Epoch {epoch} started.")
+            if not HAS_RICH:
+                self._logger.system_info(f"Epoch {epoch} started.")
             self._model.train()
             total_loss = 0.0
             n_batches = 0
@@ -201,7 +226,11 @@ class Trainer:
                 raise ValueError("train_loader produced 0 batches; cannot train.")
 
             train_mean_loss = total_loss / n_batches
-            print(f"Epoch {epoch}. Train Mean Loss: {train_mean_loss:.4f}")
+            
+            if HAS_RICH:
+                progress.update(epoch_task, advance=1, epoch=epoch+1, info=f"Train Mean Loss : {train_mean_loss:.4f}")
+            else:
+                print(f"Epoch {epoch}. Train Mean Loss: {train_mean_loss:.4f}")
 
             # --- VALIDATION ---
             val_acc = None
@@ -240,10 +269,13 @@ class Trainer:
 
                 if val_n_batches > 0:
                     val_mean_loss = val_total_loss / val_n_batches
-                    print(f"Epoch {epoch}. Validation Loss: {val_mean_loss:.4f}")
-
-                val_acc = accuracy_score(val_labels, val_predictions)
-                print(f"Epoch {epoch}. Validation Accuracy: {val_acc:.4f}")
+                    val_acc = accuracy_score(val_labels, val_predictions)
+                    
+                    if HAS_RICH:
+                        progress.update(epoch_task, info=f"Train Mean Loss: {train_mean_loss:.4f} | Val Loss: {val_mean_loss:.4f} | Val Acc: {val_acc:.4f}")
+                    else:
+                        print(f"Epoch {epoch}. Validation Loss: {val_mean_loss:.4f}")
+                        print(f"Epoch {epoch}. Validation Accuracy: {val_acc:.4f}")
 
                 if self._return_model == "best" and val_acc is not None and val_acc > self._best_acc:
                     self._best_acc = val_acc
@@ -291,13 +323,20 @@ class Trainer:
                 self._save_checkpoint(epoch, train_mean_loss, is_best=False)
 
         if self._return_model == "best" and val_loader is not None and best_state_dict is not None:
-            print(f"Loading best model with validation accuracy {self._best_acc:.4f}")
+            if HAS_RICH:
+                progress.console.print(f"[green]Loading best model with validation accuracy {self._best_acc:.4f}[/green]")
+            else:
+                print(f"Loading best model with validation accuracy {self._best_acc:.4f}")
             self._model.load_state_dict(best_state_dict)
+            
         elif self._return_model == "best" and val_loader is None:
             self._logger.system_info(
                 "return_model='best' requested but no validation loader provided; returning last model."
             )
 
+        if HAS_RICH:
+            progress.stop()
+            
         return self._model
 
     def predict(self, data_loader):
