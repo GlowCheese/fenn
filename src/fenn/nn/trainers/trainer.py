@@ -1,9 +1,20 @@
-from typing import Optional, Union, List
 import copy
-import torch
 from pathlib import Path
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from typing import Literal, Optional, Union
+
+import torch
+import torch.nn
+import torch.optim
+from sklearn.metrics import (  # noqa: F401
+    accuracy_score,
+    f1_score,
+    precision_score,
+    recall_score,
+)
+
 from fenn.logging import Logger
+from fenn.nn.utils import Checkpoint
+
 
 try: 
     from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, MofNCompleteColumn
@@ -14,20 +25,31 @@ except ImportError:
 class Trainer:
     """The base Trainer class for classification tasks."""
 
-    def __init__(self,
-                 model,
-                 loss_fn,
-                 optim,
-                 epochs,
-                 num_classes,
-                 device="cpu",
-                 return_model: str = "last",
-                 checkpoint_dir: Optional[Union[Path, str]] = None,
-                 checkpoint_epochs: Optional[Union[int, List[int]]] = None,
-                 checkpoint_name: str = "checkpoint",
-                 save_best: bool = False,
-                 early_stopping_patience: Optional[int] = None
-                 ):
+    def __init__(
+        self,
+        model: torch.nn.Module,
+        loss_fn: torch.nn.Module,
+        optim: torch.optim.Optimizer,
+        epochs: int,
+        num_classes: int,
+        device="cpu",
+        return_model: Literal["last", "best"] = "last",
+        early_stopping_patience: Optional[int] = None,
+        checkpoint_config: Optional[Checkpoint] = None,
+    ):
+        """Initialize a Trainer instance to fit a neural network model.
+
+        Args:
+            model: The neural network model to train.
+            loss_fn: The loss function to use.
+            optim: The optimizer to use.
+            epochs: The number of epochs to train for.
+            num_classes: The number of classes to predict.
+            device: The device on which the data will be loaded.
+            return_model: Whether to return the last or best model.
+            early_stopping_patience: The number of epochs to wait before early stopping.
+            checkpoint_config: The checkpoint configuration. Leave as `None` to disable checkpointing.
+        """
 
         self._logger = Logger()
 
@@ -45,26 +67,17 @@ class Trainer:
 
         self._metrics = {}
 
-        # chechpoint setup
-        self._checkpoint_dir = Path(checkpoint_dir) if checkpoint_dir else None
-        self._checkpoint_epochs = checkpoint_epochs
-        self._checkpoint_name = checkpoint_name
-        self._save_best = save_best
-
         self._best_acc = float("-inf")
         self._best_loss = float("inf")
+
+        # checkpoint setup
+        self._checkpoint = checkpoint_config
+        if self._checkpoint is not None:
+            self._checkpoint._setup()
 
         # early stopping setup
         self._early_stopping_patience = early_stopping_patience
         self._patience_counter = 0
-
-        # create the checkpoint directory if it doesn't exist and is enabled
-        if self._checkpoint_dir and (self._checkpoint_epochs is not None or self._save_best):
-            self._checkpoint_dir.mkdir(parents=True, exist_ok=True)
-            if self._checkpoint_epochs is not None:
-                self._logger.system_info(f"Checkpointing enabled. Checkpoints will be saved to {self._checkpoint_dir} every {self._checkpoint_epochs} epochs.")
-            if self._save_best:
-                self._logger.system_info(f"Best model checkpointing enabled. Best model will be saved to {self._checkpoint_dir}.")
 
         # log early stopping setup
         if self._early_stopping_patience is not None:
@@ -80,15 +93,17 @@ class Trainer:
             bool: True if a checkpoint should be saved, False otherwise.
 
         """
-        if self._checkpoint_dir is None or self._checkpoint_epochs is None:
+        if self._checkpoint is None:
             return False
 
-        if isinstance(self._checkpoint_epochs, int):
-            # save every N epochs
-            return epoch % self._checkpoint_epochs == 0 or epoch == self._epochs-1
-        elif isinstance(self._checkpoint_epochs, list):
+        if isinstance(self._checkpoint.epochs, list):
             # save at specific epochs
-            return epoch in self._checkpoint_epochs
+            return epoch in self._checkpoint.epochs
+
+        elif isinstance(self._checkpoint.epochs, int):
+            # save every N epochs
+            return epoch % self._checkpoint.epochs == 0 or epoch == self._epochs
+
         return False
 
     def _save_checkpoint(self, epoch: int, loss: float, is_best: bool = False):
@@ -99,28 +114,32 @@ class Trainer:
             loss: training loss for this epoch
             is_best: if true save as best model
         """
-        if self._checkpoint_dir is None:
+        if self._checkpoint is None:
+            return
+
+        if is_best and not self._checkpoint.save_best:
             return
 
         checkpoint = {
-            'epoch': epoch,
-            'model_state_dict': self._model.state_dict(),
-            'optimizer_state_dict': self._optimizer.state_dict(),
-            'loss': loss,
-            'best_acc': self._best_acc,
-            'best_loss': self._best_loss
+            "epoch": epoch,
+            "model_state_dict": self._model.state_dict(),
+            "optimizer_state_dict": self._optimizer.state_dict(),
+            "loss": loss,
+            "best_acc": self._best_acc,
+            "best_loss": self._best_loss
         }
 
         if not is_best:
-            filename = f"{self._checkpoint_name}_epoch_{epoch}.pt"
-            filepath = self._checkpoint_dir / filename
+            filename = f"{self._checkpoint.name}_epoch_{epoch}.pt"
+            filepath = self._checkpoint.dir / filename
             torch.save(checkpoint, filepath)
             self._logger.system_info(f"Checkpoint saved at epoch {epoch} to {filepath}.")
 
         else:
-            best_filepath = self._checkpoint_dir / f"{self._checkpoint_name}_best.pt"
-            torch.save(checkpoint, best_filepath)
-            self._logger.system_info(f"Best model checkpoint saved to {best_filepath} with loss {loss:.4f}.")
+            filename = f"{self._checkpoint.name}_best.pt"
+            filepath = self._checkpoint.dir / filename
+            torch.save(checkpoint, filepath)
+            self._logger.system_info(f"Best model checkpoint saved to {filepath} with loss {loss:.4f}.")
 
     def _binary_predict(self, data_loader):
         self._model.eval()
@@ -238,7 +257,7 @@ class Trainer:
                     self._patience_counter += 1
 
             # --- VALIDATION ---
-            elif (epoch - start_epoch) % val_epochs == 0:  # or epoch == self._epochs - 1
+            elif (epoch - start_epoch) % val_epochs == 0 or epoch == self._epochs - 1:
 
                 self._model.eval()
                 val_labels = []
@@ -285,8 +304,7 @@ class Trainer:
                 if val_acc > self._best_acc:
                     self._best_acc = val_acc
                     best_state_dict = copy.deepcopy(self._model.state_dict())
-                    if self._save_best:
-                        self._save_checkpoint(epoch, train_mean_loss, is_best=True)
+                    self._save_checkpoint(epoch, train_mean_loss, is_best=True)
 
                 if val_mean_loss < self._best_loss:
                     self._best_loss = val_mean_loss
@@ -359,12 +377,12 @@ class Trainer:
             raise FileNotFoundError(f"Checkpoint file {checkpoint_path} does not exist.")
 
         checkpoint = torch.load(checkpoint_path, map_location=self._device)
-        self._model.load_state_dict(checkpoint['model_state_dict'])
-        self._optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        epoch = checkpoint['epoch']
-        loss = checkpoint.get('loss', float('inf'))
-        self._best_loss = checkpoint.get('best_loss', float('inf'))
-        self._best_acc = checkpoint.get('best_acc', float('-inf'))
+        self._model.load_state_dict(checkpoint["model_state_dict"])
+        self._optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        epoch = checkpoint["epoch"]
+        loss = checkpoint.get("loss", float("inf"))
+        self._best_loss = checkpoint.get("best_loss", float("inf"))
+        self._best_acc = checkpoint.get("best_acc", float("-inf"))
 
         self._logger.system_info(f"Checkpoint loaded from {checkpoint_path}. Resuming from epoch {epoch} with loss {loss:.4f}.")
         return epoch
