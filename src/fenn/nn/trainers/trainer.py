@@ -1,6 +1,5 @@
-import copy
 from pathlib import Path
-from typing import Literal, Optional, Union
+from typing import Optional, Union, cast
 
 import torch
 import torch.nn
@@ -11,16 +10,24 @@ from sklearn.metrics import (  # noqa: F401
     precision_score,
     recall_score,
 )
+from torch.utils.data import DataLoader
 
 from fenn.logging import Logger
-from fenn.nn.utils import Checkpoint
+from fenn.nn.utils import Checkpoint, TrainingState
 
+try:
+    from rich.progress import (
+        Progress,
+        BarColumn,
+        TextColumn,
+        TimeElapsedColumn,
+        MofNCompleteColumn,
+    )
 
-try: 
-    from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, MofNCompleteColumn
     HAS_RICH = True
 except ImportError:
     HAS_RICH = False
+
 
 class Trainer:
     """The base Trainer class for classification tasks."""
@@ -30,10 +37,8 @@ class Trainer:
         model: torch.nn.Module,
         loss_fn: torch.nn.Module,
         optim: torch.optim.Optimizer,
-        epochs: int,
         num_classes: int,
-        device="cpu",
-        return_model: Literal["last", "best"] = "last",
+        device: Union[torch.device, str] = "cpu",
         early_stopping_patience: Optional[int] = None,
         checkpoint_config: Optional[Checkpoint] = None,
     ):
@@ -43,32 +48,25 @@ class Trainer:
             model: The neural network model to train.
             loss_fn: The loss function to use.
             optim: The optimizer to use.
-            epochs: The number of epochs to train for.
             num_classes: The number of classes to predict.
             device: The device on which the data will be loaded.
-            return_model: Whether to return the last or best model.
             early_stopping_patience: The number of epochs to wait before early stopping.
-            checkpoint_config: The checkpoint configuration. Leave as `None` to disable checkpointing.
+            checkpoint_config: The checkpoint configuration. If `None`, checkpointing is disabled.
         """
 
         self._logger = Logger()
 
-        self._device = device
-
-        self._model = model.to(device)
         self._loss_fn = loss_fn
-        self._optimizer = optim
-        self._epochs = epochs
         self._num_classes = num_classes
-        self._return_model = return_model.lower()
+        self._device = torch.device(device)
 
-        if self._return_model not in {"last", "best"}:
-            raise ValueError("return_model must be 'last' or 'best'")
+        # training state at epoch 0
+        self._model = model.to(device)
+        self._optimizer = optim
+        self._state = TrainingState(epoch=0)
 
-        self._metrics = {}
-
-        self._best_acc = float("-inf")
-        self._best_loss = float("inf")
+        self._best_state: Optional[TrainingState] = None
+        """Best training state based on validation loss."""
 
         # checkpoint setup
         self._checkpoint = checkpoint_config
@@ -77,94 +75,12 @@ class Trainer:
 
         # early stopping setup
         self._early_stopping_patience = early_stopping_patience
-        self._patience_counter = 0
-
-        # log early stopping setup
         if self._early_stopping_patience is not None:
-            self._logger.system_info(f"Early stopping enabled with patience of {self._early_stopping_patience} epochs.")
+            self._logger.system_info(
+                f"Early stopping enabled with patience of {self._early_stopping_patience} epochs."
+            )
 
-
-    def _should_save_checkpoint(self, epoch: int):
-        """Determine if a checkpoint should be saved at the given epoch.
-
-        Args:
-            epoch (int): The current epoch number. (0-indexed)
-        Returns:
-            bool: True if a checkpoint should be saved, False otherwise.
-
-        """
-        if self._checkpoint is None:
-            return False
-
-        if isinstance(self._checkpoint.epochs, list):
-            # save at specific epochs
-            return epoch in self._checkpoint.epochs
-
-        elif isinstance(self._checkpoint.epochs, int):
-            # save every N epochs
-            return epoch % self._checkpoint.epochs == 0 or epoch == self._epochs
-
-        return False
-
-    def _save_checkpoint(self, epoch: int, loss: float, is_best: bool = False):
-        """Save a checkpoint of the model at the given epoch.
-
-        Args:
-            epoch (int): The current epoch number. (0-indexed)
-            loss: training loss for this epoch
-            is_best: if true save as best model
-        """
-        if self._checkpoint is None:
-            return
-
-        if is_best and not self._checkpoint.save_best:
-            return
-
-        checkpoint = {
-            "epoch": epoch,
-            "model_state_dict": self._model.state_dict(),
-            "optimizer_state_dict": self._optimizer.state_dict(),
-            "loss": loss,
-            "best_acc": self._best_acc,
-            "best_loss": self._best_loss
-        }
-
-        if not is_best:
-            filename = f"{self._checkpoint.name}_epoch_{epoch}.pt"
-            filepath = self._checkpoint.dir / filename
-            torch.save(checkpoint, filepath)
-            self._logger.system_info(f"Checkpoint saved at epoch {epoch} to {filepath}.")
-
-        else:
-            filename = f"{self._checkpoint.name}_best.pt"
-            filepath = self._checkpoint.dir / filename
-            torch.save(checkpoint, filepath)
-            self._logger.system_info(f"Best model checkpoint saved to {filepath} with loss {loss:.4f}.")
-
-    def _binary_predict(self, data_loader):
-        self._model.eval()
-        predictions = []
-        with torch.no_grad():
-            for data, labels in data_loader:
-                data = self._move_to_device(data, self._device)
-                logits = self._model(data)
-                preds = torch.sigmoid(logits).squeeze(-1)
-                preds = (preds > 0.5).long()
-                predictions.extend(preds.cpu().tolist())
-        return predictions
-
-    def _multiclass_predict(self, data_loader):
-        self._model.eval()
-        predictions = []
-        with torch.no_grad():
-            for data, labels in data_loader:
-                data = self._move_to_device(data, self._device)
-                logits = self._model(data)
-                preds = torch.argmax(logits, dim=1)
-                predictions.extend(preds.cpu().tolist())
-        return predictions
-
-    def _move_to_device(self, batch, device):
+    def _move_to_device(self, batch, device: Union[torch.device, str]):
         if torch.is_tensor(batch):
             return batch.to(device)
         if isinstance(batch, (list, tuple)):
@@ -173,7 +89,41 @@ class Trainer:
             return {k: self._move_to_device(v, device) for k, v in batch.items()}
         return batch
 
-    def fit(self, train_loader, val_loader=None, val_epochs: int = 5, start_epoch: int = 0):
+    def _should_save_checkpoint(self, epoch: int, is_last_epoch: bool = False):
+        """Check if a checkpoint should be saved at the given epoch.
+
+        Args:
+            epoch: The current epoch number. (1-indexed)
+            is_last_epoch: Whether this is the last epoch.
+
+        Returns:
+            True if a checkpoint should be saved, False otherwise.
+        """
+
+        if self._checkpoint is None:
+            return False
+
+        if is_last_epoch:
+            # always save at the last epoch
+            return True
+
+        elif isinstance(self._checkpoint.epochs, list):
+            # save at specific epochs
+            return epoch in self._checkpoint.epochs
+
+        elif isinstance(self._checkpoint.epochs, int):
+            # save every N epochs
+            return epoch % self._checkpoint.epochs == 0
+
+        return False
+
+    def fit(
+        self,
+        train_loader: DataLoader,
+        epochs: int,
+        val_loader: Optional[DataLoader] = None,
+        val_epochs: int = 1,
+    ):
         """Train the model with optional validation and early stopping.
 
         The behaviour depends on the combination of `val_loader` and
@@ -188,19 +138,21 @@ class Trainer:
 
         Args:
             train_loader: DataLoader for training data.
+            epochs: Total number of epochs to train for.
             val_loader: DataLoader for validation data (optional).
             val_epochs: How often to evaluate on validation set (in epochs).
-            start_epoch: Epoch to resume training from.
 
         Returns:
             The trained model (returned according to ``return_model``).
         """
 
-        best_state_dict = None
-        
+        state = self._state
+
         if HAS_RICH:
             progress = Progress(
-                TextColumn("[bold blue]Epoch {task.fields[epoch]}/{task.fields[total_epochs]}"),
+                TextColumn(
+                    "[bold blue]Epoch {task.fields[epoch]}/{task.fields[total_epochs]}"
+                ),
                 BarColumn(),
                 MofNCompleteColumn(),
                 TimeElapsedColumn(),
@@ -209,14 +161,17 @@ class Trainer:
             progress.start()
             epoch_task = progress.add_task(
                 "Training",
-                total = self._epochs - start_epoch,
-                epoch = start_epoch,
-                total_epochs = self._epochs,
-                info=""
+                total=epochs - state.epoch,
+                epoch=state.epoch,
+                total_epochs=self._epochs,
+                info="",
             )
-            
-        for epoch in range(start_epoch, self._epochs):
 
+        else:
+            progress = None
+            epoch_task = None
+
+        for epoch in range(state.epoch, self._epochs):
             # --- TRAIN ---
             if not HAS_RICH:
                 self._logger.system_info(f"Epoch {epoch} started.")
@@ -241,24 +196,29 @@ class Trainer:
             if n_batches == 0:
                 raise ValueError("train_loader produced 0 batches; cannot train.")
 
-            train_mean_loss = total_loss / n_batches
-            
-            if HAS_RICH:
-                progress.update(epoch_task, advance=1, epoch=epoch+1, info=f"Train Mean Loss : {train_mean_loss:.4f}")
+            state.train_loss = total_loss / n_batches
+            if progress:
+                progress.update(
+                    epoch_task,
+                    advance=1,
+                    epoch=epoch + 1,
+                    info=f"Train Mean Loss : {state.train_loss:.4f}",
+                )
             else:
-                print(f"Epoch {epoch}. Train Mean Loss: {train_mean_loss:.4f}")
+                print(f"Epoch {epoch}. Train Mean Loss: {state.train_loss:.4f}")
 
             # --- NO VALIDATION ---
             if val_loader is None:
-                if train_mean_loss < self._best_loss:
-                    self._best_loss = train_mean_loss
-                    self._patience_counter = 0
+                state.val_loss = None
+
+                if state.train_loss < state.best_train_loss:
+                    state.best_train_loss = state.train_loss
+                    state.patience_counter = 0
                 else:
-                    self._patience_counter += 1
+                    state.patience_counter += 1
 
             # --- VALIDATION ---
-            elif (epoch - start_epoch) % val_epochs == 0 or epoch == self._epochs - 1:
-
+            elif epoch % val_epochs == 0 or epoch == epochs:
                 self._model.eval()
                 val_labels = []
                 val_predictions = []
@@ -290,36 +250,46 @@ class Trainer:
 
                 if val_n_batches == 0:
                     raise ValueError("val_loader produced 0 batches; cannot validate.")
-                
-                if val_n_batches > 0:
-                    val_mean_loss = val_total_loss / val_n_batches
-                    val_acc = accuracy_score(val_labels, val_predictions)
-                    
-                    if HAS_RICH:
-                        progress.update(epoch_task, info=f"Train Mean Loss: {train_mean_loss:.4f} | Val Loss: {val_mean_loss:.4f} | Val Acc: {val_acc:.4f}")
-                    else:
-                        print(f"Epoch {epoch}. Validation Loss: {val_mean_loss:.4f}")
-                        print(f"Epoch {epoch}. Validation Accuracy: {val_acc:.4f}")
+                state.val_loss = val_total_loss / val_n_batches
+                state.acc = accuracy_score(val_labels, val_predictions)
 
-                if val_acc > self._best_acc:
-                    self._best_acc = val_acc
-                    best_state_dict = copy.deepcopy(self._model.state_dict())
-                    self._save_checkpoint(epoch, train_mean_loss, is_best=True)
-
-                if val_mean_loss < self._best_loss:
-                    self._best_loss = val_mean_loss
-                    self._patience_counter = 0
+                if progress:
+                    progress.update(
+                        epoch_task,
+                        info=f"Train Mean Loss: {state.train_loss:.4f} | Val Loss: {state.val_loss:.4f} | Val Acc: {state.acc:.4f}",
+                    )
                 else:
-                    self._patience_counter += 1
+                    print(f"Epoch {epoch}. Validation Loss: {state.val_loss:.4f}")
+                    print(f"Epoch {epoch}. Validation Accuracy: {state.acc:.4f}")
+
+                if state.val_loss < state.best_val_loss:
+                    state.best_val_loss = state.val_loss
+
+                    # Update best state for improved val_loss
+                    self._best_state = state.clone(
+                        model_state_dict=self._model.state_dict(),
+                        optimizer_state_dict=self._optimizer.state_dict(),
+                    )
+                    if self._checkpoint is not None:
+                        self._checkpoint.save(self._best_state, is_best=True)
+
+                    state.patience_counter = 0
+                else:
+                    state.patience_counter += 1
+
+                if state.acc > state.best_acc:
+                    state.best_acc = state.acc
 
             # --- CHECKPOINTING ---
-            if self._should_save_checkpoint(epoch):
-                self._save_checkpoint(epoch, train_mean_loss, is_best=False)
+            if self._should_save_checkpoint(epoch, is_last_epoch=(epoch == epochs)):
+                state.model_state_dict = self._model.state_dict()
+                state.optimizer_state_dict = self._optimizer.state_dict()
+                cast(Checkpoint, self._checkpoint).save(state)
 
             # --- EARLY STOPPING ---
             if (
                 self._early_stopping_patience is not None
-                and self._patience_counter >= self._early_stopping_patience
+                and state.patience_counter >= self._early_stopping_patience
             ):
                 if val_loader is None:
                     _reason = "training loss"
@@ -331,58 +301,81 @@ class Trainer:
                 )
                 break
 
-        if self._return_model == "best":
-            if val_loader is None:
-                self._logger.system_info(
-                    "return_model='best' requested but no validation loader provided; returning last model."
-                )
-            elif best_state_dict is None:
-                self._logger.system_info(
-                    "return_model='best' requested but best_state_dict has not been updated; returning last model."
-                )
-            else:
-                if HAS_RICH:
-                    progress.console.print(f"[green]Loading best model with validation accuracy {self._best_acc:.4f}[/green]")
-                else:
-                    print(f"Loading best model with validation accuracy {self._best_acc:.4f}")
-                self._model.load_state_dict(best_state_dict)
-
         if HAS_RICH:
             progress.stop()
-            
-        return self._model
 
-    def predict(self, data_loader):
-        if self._num_classes == 2:
-            return self._binary_predict(data_loader)
-        else:
-            return self._multiclass_predict(data_loader)
-
-    def load_checkpoint(self, checkpoint_path: Union[Path, str]):
-        """Load a checkpoint from the given path.
+    def _replace_state(self, new_state: TrainingState):
+        """Replace the current training state with a new state.
 
         Args:
-            checkpoint_path (Path or str): Path to the checkpoint file.
+            new_state: The new state to replace the current state with.
+        """
+        self._state = new_state
+        if new_state.model_state_dict:
+            self._model.load_state_dict(new_state.model_state_dict)
+        if new_state.optimizer_state_dict:
+            self._optimizer.load_state_dict(new_state.optimizer_state_dict)
+
+    def load_checkpoint(self, checkpoint_path: Union[str, Path]):
+        """Load a checkpoint from a given path to update current training state.
+
+        Args:
+            checkpoint_path: Path to the checkpoint file.
+        """
+        if self._checkpoint is None:
+            raise ValueError("Cannot load checkpoint: checkpoint_config is missing.")
+
+        new_state = self._checkpoint.load(checkpoint_path)
+        self._replace_state(new_state)
+
+    def load_checkpoint_at_epoch(self, epoch: int):
+        """Load the checkpoint at the given epoch to update current training state.
+
+        Args:
+            epoch: Epoch to load the checkpoint at.
+        """
+        if self._checkpoint is None:
+            raise ValueError("Cannot load checkpoint: checkpoint_config is missing.")
+
+        new_state = self._checkpoint.load_at_epoch(epoch)
+        self._replace_state(new_state)
+
+    def load_best_checkpoint(self):
+        """Load the best checkpoint to update current training state."""
+        if self._checkpoint is None:
+            raise ValueError("Cannot load checkpoint: checkpoint_config is missing.")
+
+        new_state = self._checkpoint.load_best()
+        self._replace_state(new_state)
+
+    def predict(self, dataloader_or_batch: Union[DataLoader, torch.Tensor]):
+        """Predicts the output of the model for a given dataloader or batch.
+
+        Args:
+            dataloader_or_batch: A DataLoader or a torch tensor.
 
         Returns:
-            Epoch number from the loaded checkpoint
-
-        Example:
-            > trainer = Trainer(model, loss_fn, optimizer, epoch=100)
-            > start_epoch = trainer.load_checkpoint("checkpoints/checkpoint_epoch_50.pt")
-            # now you can resume training from epoch 51
+            list: A list of predictions.
         """
-        checkpoint_path = Path(checkpoint_path)
-        if not checkpoint_path.exists():
-            raise FileNotFoundError(f"Checkpoint file {checkpoint_path} does not exist.")
 
-        checkpoint = torch.load(checkpoint_path, map_location=self._device)
-        self._model.load_state_dict(checkpoint["model_state_dict"])
-        self._optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-        epoch = checkpoint["epoch"]
-        loss = checkpoint.get("loss", float("inf"))
-        self._best_loss = checkpoint.get("best_loss", float("inf"))
-        self._best_acc = checkpoint.get("best_acc", float("-inf"))
+        self._model.eval()
+        predictions = []
 
-        self._logger.system_info(f"Checkpoint loaded from {checkpoint_path}. Resuming from epoch {epoch} with loss {loss:.4f}.")
-        return epoch
+        def predict_batch(batch):
+            batch = self._move_to_device(batch, self._device)
+            logits = self._model(batch)
+            if self._num_classes == 2:
+                preds = torch.sigmoid(logits).squeeze(-1)
+                preds = (preds > 0.5).long()
+            else:
+                preds = torch.argmax(logits, dim=1)
+            predictions.extend(preds.cpu().tolist())
+
+        with torch.no_grad():
+            if isinstance(dataloader_or_batch, DataLoader):
+                for data, _ in dataloader_or_batch:
+                    predict_batch(data)
+            else:
+                predict_batch(dataloader_or_batch)
+
+        return predictions
