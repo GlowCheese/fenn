@@ -168,7 +168,6 @@ class Trainer:
                 BarColumn(),
                 MofNCompleteColumn(),
                 TimeElapsedColumn(),
-                TextColumn("{task.fields[info]}"),
             )
             progress.start()
             epoch_task = progress.add_task(
@@ -262,6 +261,16 @@ class Trainer:
 
                 if val_n_batches == 0:
                     raise ValueError("val_loader produced 0 batches; cannot validate.")
+                
+                if val_n_batches > 0:
+                    val_mean_loss = val_total_loss / val_n_batches
+                    val_acc = accuracy_score(val_labels, val_predictions)
+                    
+                    if HAS_RICH:
+                        progress.console.print(f"[bold blue]Epoch {epoch+1}/{self._epochs}[/bold blue] Val Loss: {val_mean_loss:.4f} | Val Acc: {val_acc:.4f}")
+                    else:
+                        print(f"Epoch {epoch}. Validation Loss: {val_mean_loss:.4f}")
+                        print(f"Epoch {epoch}. Validation Accuracy: {val_acc:.4f}")
 
                 state.val_loss = val_total_loss / val_n_batches
                 state.acc = accuracy_score(val_labels, val_predictions)
