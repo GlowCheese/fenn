@@ -69,25 +69,7 @@ class Parser:
     def print(self) -> None:
         """Public method to trigger the flattened print with colored paths."""
         from fenn.logging import Logger
-
-        colors = [
-            Fore.LIGHTCYAN_EX,
-            Fore.LIGHTBLUE_EX,
-            Fore.LIGHTMAGENTA_EX,
-            Fore.LIGHTGREEN_EX,
-        ]
-
-        flat_config = self._flatten_dict(self._args)
-
-        for k, v in flat_config.items():
-            parts = k.split("/")
-            colored_parts = []
-
-            for i, part in enumerate(parts):
-                color = colors[i % len(colors)]
-                colored_parts.append(f"{color}{part}{Style.RESET_ALL}")
-
-            Logger().user_info(f"{'/'.join(colored_parts)}: {v}")
+        Logger().write_config(self._args)
 
     @property
     def config_file(self) -> str:
@@ -100,19 +82,3 @@ class Parser:
     @property
     def args(self) -> Dict[str, Any]:
         return self._args
-
-    @staticmethod
-    def _flatten_dict(d: dict, parent_key: str = "", sep: str = "/") -> dict:
-        """Recursively flattens a nested dictionary."""
-
-        items = []
-        for k, v in d.items():
-            new_key = f"{parent_key}{sep}{k}" if parent_key else k
-            if isinstance(v, dict):
-                items.extend(
-                    Parser._flatten_dict(v, new_key, sep=sep).items()
-                )
-            else:
-                items.append((new_key, v))
-
-        return dict(items)

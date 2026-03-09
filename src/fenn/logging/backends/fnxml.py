@@ -14,6 +14,7 @@ class FnXmlBackend:
         self._enabled = False
         self._session_id: Optional[str] = None
         self._project: Optional[str] = None
+        self._config_flat: Dict[str, str] = {}
 
     # ---- public (system tags) ----
     def system_info(self, message: str) -> None:
@@ -57,6 +58,7 @@ class FnXmlBackend:
                 f'started="{self._escape(started)}">\n'
             )
 
+        self.write_config(args)
         self._enabled = True
 
     def stop(self) -> None:
@@ -97,6 +99,21 @@ class FnXmlBackend:
                 f'level="{self._escape(level)}">{clean_message}</entry>\n'
             )
 
+    def write_config(self, args: Dict[str, Any]) -> None:
+        if not self._log_file:
+            return
+
+        flat = self._flatten_dict(args)
+        self._config_flat = {str(k): str(v) for k, v in flat.items()}
+        with open(self._log_file, "a", encoding="utf-8") as f:
+            f.write("  <config>\n")
+            for key, value in flat.items():
+                f.write(
+                    f'    <item key="{self._escape(str(key))}" '
+                    f'value="{self._escape(str(value))}" />\n'
+                )
+            f.write("  </config>\n")
+
     @staticmethod
     def _escape(value: str) -> str:
         return (
@@ -106,3 +123,14 @@ class FnXmlBackend:
             .replace('"', "&quot;")
             .replace("'", "&apos;")
         )
+
+    @staticmethod
+    def _flatten_dict(d: Dict[str, Any], parent_key: str = "", sep: str = "/") -> Dict[str, Any]:
+        items = []
+        for k, v in d.items():
+            new_key = f"{parent_key}{sep}{k}" if parent_key else str(k)
+            if isinstance(v, dict):
+                items.extend(FnXmlBackend._flatten_dict(v, new_key, sep=sep).items())
+            else:
+                items.append((new_key, v))
+        return dict(items)

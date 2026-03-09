@@ -1,6 +1,8 @@
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from colorama import Fore, Style
+
 from fenn.args import Parser
 from fenn.logging.backends.fnxml import FnXmlBackend
 from fenn.logging.backends.logging import LoggingBackend
@@ -86,6 +88,30 @@ class Logger:
         if self._args.get("logger", {}).get("fnxml", False):
             self._fnxml_backend.user_exception(message)
 
+    def write_config(self, message: str) -> None:
+
+        colors = [
+            Fore.LIGHTCYAN_EX,
+            Fore.LIGHTBLUE_EX,
+            Fore.LIGHTMAGENTA_EX,
+            Fore.LIGHTGREEN_EX,
+        ]
+
+        flat_config = self._flatten_dict(self._args)
+
+        for k, v in flat_config.items():
+            parts = k.split("/")
+            colored_parts = []
+
+            for i, part in enumerate(parts):
+                color = colors[i % len(colors)]
+                colored_parts.append(f"{color}{part}{Style.RESET_ALL}")
+            
+            self._logging_backend.user_info(f"{'/'.join(colored_parts)}: {v}")
+
+        if self._args.get("logger", {}).get("fnxml", False):
+            self._fnxml_backend.write_config(message)
+
     # --------------------------
     # lifecycle
     # --------------------------
@@ -113,6 +139,22 @@ class Logger:
         if self._args.get("logger", {}).get("fnxml", False):
             self._fnxml_backend.stop()
 
+    @staticmethod
+    def _flatten_dict(d: dict, parent_key: str = "", sep: str = "/") -> dict:
+        """Recursively flattens a nested dictionary."""
+
+        items = []
+        for k, v in d.items():
+            new_key = f"{parent_key}{sep}{k}" if parent_key else k
+            if isinstance(v, dict):
+                items.extend(
+                    Logger._flatten_dict(v, new_key, sep=sep).items()
+                )
+            else:
+                items.append((new_key, v))
+
+        return dict(items)
+    
     # --------------------------
     # accessors (optional)
     # --------------------------
