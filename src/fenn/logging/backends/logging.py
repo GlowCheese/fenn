@@ -9,6 +9,7 @@ from resend import templates
 from rich.console import Console
 from rich.table import Table
 from rich.text import Text
+from fenn.args import Parser
 from fenn.logging.backends.baseLogger import baseLogger
 from colorama import Fore, Style
 
@@ -39,7 +40,7 @@ class LoggingBackend(baseLogger):
     def write_config(self, message: str) -> None:
         if self._config_table is None:
             table = Table(title="")
-            table.add_column("Config", style="", width=80)
+            table.add_column(f"Configuration file {Parser().config_file} loaded", style="", width=80)
             self._config_table = table
         self._config_table.add_row(Text.from_ansi(f"- {message}"))
 
@@ -71,8 +72,6 @@ class LoggingBackend(baseLogger):
         # truncate/create
         with open(self._log_file, "w", encoding="utf-8") as f:
             f.write("")
-
-        self.system_info(f"Logging file {log_filename} created in {log_dir}")
 
         # override global print
         builtins.print = self._log_print

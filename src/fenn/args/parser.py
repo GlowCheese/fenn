@@ -29,13 +29,10 @@ class Parser:
 
         logger = Logger()
 
-        # Check if file exists BEFORE reading
-        default = " (default)" if self._config_file == "fenn.yaml" else ""
-
         if not os.path.isfile(self._config_file):
 
             logger.system_exception(
-                f"Configuration file {self._config_file}{default} was not found."
+                f"Configuration file {self._config_file} was not found."
             )
 
             raise FileNotFoundError(
@@ -47,10 +44,6 @@ class Parser:
         # File exists → load YAML
         with open(self._config_file) as f:
             self._args = yaml.safe_load(f)
-
-        logger.system_info(
-            f"Configuration file {self._config_file} {default} loaded."
-        )
 
         # Handle deprecated WANDB key
         if self._args.get("wandb", {}).get("key"):
