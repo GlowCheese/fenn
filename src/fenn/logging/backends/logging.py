@@ -20,11 +20,10 @@ from colorama import Fore, Style
 try:
     from loguru import logger
     _LOGURU_AVAILABLE = True
-    print(f"[DEBUG] Loguru available, using LoguruBackend for logging.")
+
 except ImportError:
     _LOGURU_AVAILABLE = False
     logger = None
-    print(f"[DEBUG] Loguru not available, using custom LoggingBackend for logging.")
 
 class LoggingBackend():
     def __init__(self) -> None:
@@ -54,6 +53,7 @@ class LoggingBackend():
             table.add_column(f"Configuration file {Parser().config_file} loaded", style="", width=80)
             self._config_table = table
         self._config_table.add_row(Text.from_ansi(f"- {message}"))
+        self.user_info(f"{message}", display=False)
 
     def flush_config_table(self) -> None:
         if self._config_table is None:
@@ -61,14 +61,14 @@ class LoggingBackend():
         self._console.print(self._config_table)
         self._config_table = None
         
-    def user_info(self, message: str) -> None:
-        self._log_print(message)
+    def user_info(self, message: str, display: bool = True) -> None:
+        self._log_print(message, display=display)
 
     def user_warning(self, message: str) -> None:
-        self._log_print(message)
+        self._log_print(message, display=True)
 
     def user_exception(self, message: str) -> None:
-        self._log_print(message)
+        self._log_print(message, display=True)
 
     # ---- lifecycle ----
     def start(self, args: Dict[str, Any]) -> None:
@@ -121,6 +121,7 @@ class LoggingBackend():
         end: str = "\n",
         file: Optional[Any] = None,
         flush: bool = False,
+        display: bool = True,
     ) -> None:
         message = sep.join(map(str, objects))
 
@@ -141,7 +142,8 @@ class LoggingBackend():
                 if self._print_sink is not None:
                     self._print_sink(clean_message, timestamp_dt)
 
-        self._original_print(*objects, sep=sep, end=end, file=file, flush=flush)
+        if display:
+            self._original_print(*objects, sep=sep, end=end, file=file, flush=flush)
 
     @property
     def log_file(self) -> Optional[Path]:

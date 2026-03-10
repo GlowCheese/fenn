@@ -67,8 +67,8 @@ class Logger:
         if self._args.get("logger", {}).get("fnxml", False):
             self._fnxml_backend.system_exception(message)
 
-    def user_info(self, message: str) -> None:
-        self._logging_backend.user_info(message)
+    def user_info(self, message: str, display: bool = True) -> None:
+        self._logging_backend.user_info(message, display)
         if self._args.get("logger", {}).get("fnxml", False):
             self._fnxml_backend.user_info(message)
 
@@ -102,10 +102,7 @@ class Logger:
                 colored_parts.append(f"{color}{part}{Style.RESET_ALL}")
             
 
-            if hasattr(self._logging_backend, "write_config"):
-                self._logging_backend.write_config(f"{'/'.join(colored_parts)}: {v}")
-            else:
-                self._logging_backend.user_info(f"{'/'.join(colored_parts)}: {v}")
+            self._logging_backend.write_config(f"{'/'.join(colored_parts)}: {v}")
 
         if hasattr(self._logging_backend, "flush_config_table"):
             self._logging_backend.flush_config_table()

@@ -177,6 +177,9 @@ class ClassificationTrainer(Trainer):
             if val_loader is None:
                 state.val_loss = None
 
+                progress.console.print(f"[bold blue]Epoch {epoch}/{epochs}[/bold blue] Train Loss: {state.train_loss:.4f}")
+                Logger().user_info(f"Epoch {epoch}/{epochs} - Train Loss: {state.train_loss:.4f}", display=False)
+
                 if state.train_loss < state.best_train_loss:
                     state.best_train_loss = state.train_loss
                     state.patience_counter = 0
@@ -220,7 +223,8 @@ class ClassificationTrainer(Trainer):
                     val_acc = accuracy_score(val_labels, val_predictions)
                 
                     progress.console.print(f"[bold blue]Epoch {epoch}/{epochs}[/bold blue] Train Loss: {state.train_loss:.4f} | Val Loss: {val_mean_loss:.4f} | Val Acc: {val_acc:.4f}")
-                    
+                    Logger().user_info(f"Epoch {epoch}/{epochs} - Train Loss: {state.train_loss:.4f} | Val Loss: {val_mean_loss:.4f} | Val Acc: {val_acc:.4f}", display=False)
+
                 state.val_loss = val_total_loss / val_n_batches
                 state.acc = accuracy_score(val_labels, val_predictions)
 
