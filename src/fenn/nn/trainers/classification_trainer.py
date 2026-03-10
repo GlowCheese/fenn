@@ -219,16 +219,10 @@ class ClassificationTrainer(Trainer):
                     val_mean_loss = val_total_loss / val_n_batches
                     val_acc = accuracy_score(val_labels, val_predictions)
                 
-                    progress.console.print(f"[bold blue]Epoch {epoch+1}/{epochs + 1}[/bold blue] Train Loss: {state.train_loss:.4f} | Val Loss: {val_mean_loss:.4f} | Val Acc: {val_acc:.4f}")
+                    progress.console.print(f"[bold blue]Epoch {epoch}/{epochs}[/bold blue] Train Loss: {state.train_loss:.4f} | Val Loss: {val_mean_loss:.4f} | Val Acc: {val_acc:.4f}")
                     
-
                 state.val_loss = val_total_loss / val_n_batches
                 state.acc = accuracy_score(val_labels, val_predictions)
-
-                progress.update(
-                    epoch_task,  # pyright: ignore[reportArgumentType]
-                    info=f"Train Mean Loss: {state.train_loss:.4f} | Val Loss: {state.val_loss:.4f} | Val Acc: {state.acc:.4f}",
-                )
 
                 if state.val_loss < state.best_val_loss:
                     state.best_val_loss = state.val_loss
