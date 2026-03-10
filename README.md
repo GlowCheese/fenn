@@ -1,6 +1,6 @@
-# fenn: Friendly Environment for Neural Networks
+# Fenn: Friendly Environment for Neural Networks
 
-<p align="center"><img src="fenn.gif" alt="fenn logo" width="1000"></p>
+<p align="center"><img src="banner.png" alt="fenn logo" width="1000"></p>
 
 <div align="center">
 
@@ -11,7 +11,9 @@
 
 **Stop writing boilerplate. Start training.**
 
-fenn is a lightweight Python framework that automates the "boring stuff" in Machine Learning projects. It handles configuration parsing, logging setup, and experiment tracking so you can focus on the model.
+Friendly Environment for Neural Networks (fenn) is a simple framework that automates ML/DL workflows by providing prebuilt trainers, templates, logging, configuration management, and much more. With fenn, you can focus on your model and data while it takes care of the rest.
+
+<p align="center"><img src="fenn.gif" alt="fenn preview" width="1000"></p>
 
 
 ## Why fenn?
@@ -20,9 +22,11 @@ fenn is a lightweight Python framework that automates the "boring stuff" in Mach
 
 - **Unified Logging**: All logs, print statements, and experiment metadata are automatically captured to local files and remote tracking backends simultaneously with no manual setup required.
 
-- **Multi-Backend Monitoring**: Native integration with industry-standard trackers like [Weights & Biases](https://wandb.ai/) (W&B) for centralized experiment tracking and [TensorBoard](https://www.tensorflow.org/tensorboard) for real-time metric visualization
+- **Backend Monitoring**: Native integration with industry-standard trackers like [Weights & Biases](https://wandb.ai/) (W&B) for centralized experiment tracking and [TensorBoard](https://www.tensorflow.org/tensorboard) for real-time metric visualization
 
 - **Instant Notifications**: Get real-time alerts on **Discord** and **Telegram** when experiments start, complete, or fail—no polling or manual checks.
+
+- **Trainers**: Built-in support for training loops, validation, and testing with minimal boilerplate. Just define your model and data, and let fenn handle the rest.
 
 - **Template Ready**: Built-in support for reproducible, shareable experiment templates.
 
@@ -42,10 +46,10 @@ Run the CLI tool to see which repositories are available and to download a templ
 fenn list
 ````
 
-Then, download one of the available templates (here `base` is just an example):
+Then, download one of the available templates (here `empty` is just an example):
 
 ```bash
-fenn pull base
+fenn pull empty
 ```
 
 This command downloads the selected template into the current directory and generates the corresponding configuration file, which can be customized before running or extending the project.
@@ -61,7 +65,7 @@ The structure of the ``fenn.yaml`` file is:
 # Fenn Configuration (Modify Carefully)
 # ---------------------------------------
 
-project: base
+project: empty
 
 # ---------------------------
 # Logging & Tracking
@@ -112,16 +116,6 @@ app.run()
 ```bash
 python main.py
 ```
-
-## Roadmap
-
-- **ML Templates:** Automated creation of standard project structures.
-- **Model Tools:** Utilities for Neural Network creation, training, and testing.
-- **Notifications:** Email notification system for completed training runs.
-- **Data Tools:** Data exploration and visualization helpers.
-- **Analysis:** Result analysis tools (diagrams, confusion matrices, etc.).
-- **Integrations:** Support for TensorBoard and similar tracking tools.
-- **Testing:** Comprehensive unit and integration tests for the framework.
 
 ## Contributing
 
