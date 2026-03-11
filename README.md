@@ -137,14 +137,14 @@ Interested in contributing? Join the community on [Discord](https://discord.gg/W
 
 ## Maintainers
 
-The development and long-term direction of fenn is guided by the core maintainers:
+The development and long-term direction of **fenn** is guided by the following maintainers:
 
 | Maintainer | Role |
 |------------|------|
-| [@blkdmr](https://github.com/blkdmr) | Creator & Admin |
-| [@giuliaOddi](https://github.com/giuliaOddi) | Admin |
+| [@blkdmr](https://github.com/blkdmr) | Project Creator · Lead Maintainer |
+| [@giuliaOddi](https://github.com/giuliaOddi) | Project Administrator |
 | [@GlowCheese](https://github.com/GlowCheese) | Core Maintainer |
 
-Core maintainers review pull requests, coordinate releases, and ensure project quality.
+Maintainers oversee the project roadmap, review pull requests, coordinate releases, and ensure the long-term stability and quality of the framework.
 
-Thank you for your support!
+Thank you for supporting the project.
