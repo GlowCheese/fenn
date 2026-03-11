@@ -190,6 +190,7 @@ class RegressionTrainer(Trainer):
                     val_acc = mean_squared_error(val_labels, val_predictions)
                 
                     progress.console.print(f"[bold blue]Epoch {epoch}/{epochs}[/bold blue] Train Loss: {state.train_loss:.4f} | Val Loss: {val_mean_loss:.4f} | Val Acc: {val_acc:.4f}")
+                    Logger().user_info(f"Epoch {epoch}/{epochs} - Train Loss: {state.train_loss:.4f} | Val Loss: {val_mean_loss:.4f} | Val Acc: {val_acc:.4f}", display=False)
                     
 
                 state.val_loss = val_total_loss / val_n_batches
