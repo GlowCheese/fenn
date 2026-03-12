@@ -76,7 +76,7 @@ class Fenn:
 
         try:
             # System startup message
-            self._logger.system_info(
+            self._logger.display_info(
                 f"Application starting from entrypoint: {self._entrypoint_fn.__name__}"
             )
 

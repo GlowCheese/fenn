@@ -46,12 +46,12 @@ class Checkpoint:
             return
 
         if self.epochs is not None:
-            self._logger.system_info(
+            self._logger.display_info(
                 f"Checkpointing enabled. Checkpoints will be saved to {self.dir} every {self.epochs} epochs."
             )
 
         if self.save_best:
-            self._logger.system_info(
+            self._logger.display_info(
                 f"Best model checkpointing enabled. Best model will be saved to {self.dir}."
             )
 
@@ -71,16 +71,18 @@ class Checkpoint:
             filename = f"{self.name}_epoch_{epoch}.pt"
             filepath = self.dir / filename
             torch.save(state.to_dict(), filepath)
-            self._logger.system_info(
-                f"Checkpoint saved at epoch {epoch} to {filepath}."
+            self._logger.display_info(
+                f"Checkpoint saved at epoch {epoch} to {filepath}.", 
+                display_on_terminal=False
             )
 
         elif is_best and self.save_best:
             filename = f"{self.name}_best.pt"
             filepath = self.dir / filename
             torch.save(state.to_dict(), filepath)
-            self._logger.system_info(
-                f"Best model checkpoint saved to {filepath} with acc {state.acc:.4f}."
+            self._logger.display_info(
+                f"Best model checkpoint saved to {filepath} with acc {state.acc:.4f}.",
+                display_on_terminal=False
             )
 
     def load(
@@ -107,7 +109,7 @@ class Checkpoint:
         checkpoint = torch.load(filepath, map_location=device)
         state = TrainingState.from_dict(checkpoint)
 
-        self._logger.system_info(
+        self._logger.display_info(
             f"Checkpoint loaded from {checkpoint_path}. Resuming from "
             f"epoch {state.epoch} with training loss {state.train_loss:.4f}."
         )

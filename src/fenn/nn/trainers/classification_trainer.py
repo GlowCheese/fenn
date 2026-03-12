@@ -79,11 +79,11 @@ class ClassificationTrainer(Trainer):
             self._task_type = "multiclass"
 
         if multi_label:
-            self._logger.system_info(f"Multi-label classification ({num_classes} labels) mode")
+            self._logger.display_info(f"Multi-label classification ({num_classes} labels) mode")
         elif num_classes == 2:
-            self._logger.system_info("Binary classification mode detected.")
+            self._logger.display_info("Binary classification mode detected.")
         else:
-            self._logger.system_info(f"Multi-class classification ({num_classes} classes)")
+            self._logger.display_info(f"Multi-class classification ({num_classes} classes)")
 
     def fit(
         self,
@@ -177,7 +177,7 @@ class ClassificationTrainer(Trainer):
                 state.val_loss = None
 
                 progress.console.print(f"[bold blue]Epoch {epoch}/{epochs}[/bold blue] Train Loss: {state.train_loss:.4f}")
-                Logger().user_info(f"Epoch {epoch}/{epochs} - Train Loss: {state.train_loss:.4f}", display=False)
+                Logger().display_info(f"Epoch {epoch}/{epochs} - Train Loss: {state.train_loss:.4f}", display_on_terminal=False)
 
                 if state.train_loss < state.best_train_loss:
                     state.best_train_loss = state.train_loss
@@ -222,7 +222,7 @@ class ClassificationTrainer(Trainer):
                     val_acc = accuracy_score(val_labels, val_predictions)
                 
                     progress.console.print(f"[bold blue]Epoch {epoch}/{epochs}[/bold blue] Train Loss: {state.train_loss:.4f} | Val Loss: {val_mean_loss:.4f} | Val Acc: {val_acc:.4f}")
-                    Logger().user_info(f"Epoch {epoch}/{epochs} - Train Loss: {state.train_loss:.4f} | Val Loss: {val_mean_loss:.4f} | Val Acc: {val_acc:.4f}", display=False)
+                    Logger().display_info(f"Epoch {epoch}/{epochs} - Train Loss: {state.train_loss:.4f} | Val Loss: {val_mean_loss:.4f} | Val Acc: {val_acc:.4f}", display_on_terminal=False)
 
                 state.val_loss = val_total_loss / val_n_batches
                 state.acc = accuracy_score(val_labels, val_predictions)
@@ -263,10 +263,11 @@ class ClassificationTrainer(Trainer):
                     _reason = "training loss"
                 else:
                     _reason = "validation loss"
-                self._logger.system_info(
-                    f"Early stopping triggered. "
-                    f"No improvement in {_reason} for {self._early_stopping_patience} epochs."
+                self._logger.display_info(
+                    f"Early stopping triggered.  No improvement in {_reason} for {self._early_stopping_patience} epochs.",
+                    display_on_terminal=False
                 )
+                
                 break
 
         progress.stop()

@@ -55,32 +55,22 @@ class Logger:
     # --------------------------
     # same public API as before
     # --------------------------
-    def system_info(self, message: str) -> None:
-        self._logging_backend.info(message, display_on_terminal = True, write_on_file = False)
+    def display_info(self, message: str,  display_on_terminal = True, write_on_file = True) -> None:
+        self._logging_backend.info(message, display_on_terminal, write_on_file)
         
         # system_info is called before arguments are loaded, so we need to check if self._args is not None before accessing it
         if self._args and self._args.get("logger", {}).get("fnxml", False):
             self._fnxml_backend.system_info(message)
 
-    def system_exception(self, message: str) -> None:
-        self._logging_backend.exception(message, display_on_terminal = True, write_on_file = False)
+    def display_excpetion(self, message: str,  display_on_terminal = True, write_on_file = True) -> None:
+        self._logging_backend.exception(message, display_on_terminal, write_on_file)
         if self._args.get("logger", {}).get("fnxml", False):
             self._fnxml_backend.system_exception(message)
 
-    def user_info(self, message: str, display: bool = True) -> None:
-        self._logging_backend.info(message, display_on_terminal = display, write_on_file = False)
-        if self._args.get("logger", {}).get("fnxml", False):
-            self._fnxml_backend.user_info(message)
-
-    def user_warning(self, message: str) -> None:
-        self._logging_backend.warning(message, display_on_terminal = True, write_on_file = True)
+    def display_warning(self, message: str, display_on_terminal = True, write_on_file = True) -> None:
+        self._logging_backend.warning(message, display_on_terminal, write_on_file)
         if self._args.get("logger", {}).get("fnxml", False):
             self._fnxml_backend.user_warning(message)
-
-    def user_exception(self, message: str) -> None:
-        self._logging_backend.exception(message, display_on_terminal = True, write_on_file = True)
-        if self._args.get("logger", {}).get("fnxml", False):
-            self._fnxml_backend.user_exception(message)
 
     def write_config(self, message: str) -> None:
 

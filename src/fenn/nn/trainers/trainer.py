@@ -74,7 +74,7 @@ class Trainer(ABC):
         # early stopping setup
         self._early_stopping_patience = early_stopping_patience
         if self._early_stopping_patience is not None:
-            self._logger.system_info(
+            self._logger.display_info(
                 f"Early stopping enabled with patience of {self._early_stopping_patience} epochs."
             )
 
@@ -144,162 +144,7 @@ class Trainer(ABC):
         Returns:
             The trained model (returned according to ``return_model``).
         """
-
-        state = self._state
-
-        progress = Progress(
-            TextColumn(
-                "[bold blue]Epoch {task.fields[epoch]}/{task.fields[total_epochs]}"
-            ),
-            BarColumn(),
-            MofNCompleteColumn(),
-            TimeElapsedColumn(),
-        )
-        progress.start()
-        epoch_task = progress.add_task(
-            "Training",
-            total=epochs - state.epoch,
-            epoch=state.epoch,
-            total_epochs=epochs,
-            info="",
-        )
-
-        for epoch in range(state.epoch + 1, epochs + 1):
-            state.epoch = epoch
-            state.model_state_dict = None
-            state.optimizer_state_dict = None
-
-            # --- TRAIN ---
-            self._model.train()
-            total_loss = 0.0
-            n_batches = 0
-
-            for data, labels in train_loader:
-                data = self._move_to_device(data, self._device)
-                labels = labels.to(self._device)
-
-                outputs = self._model(data)
-                loss = self._loss_fn(outputs, labels)
-
-                self._optimizer.zero_grad(set_to_none=True)
-                loss.backward()
-                self._optimizer.step()
-
-                total_loss += float(loss.item())
-                n_batches += 1
-
-            if n_batches == 0:
-                raise ValueError("train_loader produced 0 batches; cannot train.")
-
-            state.train_loss = total_loss / n_batches
-            
-            progress.update(
-                epoch_task,  # pyright: ignore[reportArgumentType]
-                advance=1,
-                epoch=epoch,
-                info=f"Train Mean Loss : {state.train_loss:.4f}",
-            )
-
-            # --- NO VALIDATION ---
-            if val_loader is None:
-                state.val_loss = None
-
-                if state.train_loss < state.best_train_loss:
-                    state.best_train_loss = state.train_loss
-                    state.patience_counter = 0
-                else:
-                    state.patience_counter += 1
-
-            # --- VALIDATION ---
-            elif epoch % val_epochs == 0 or epoch == epochs:
-                self._model.eval()
-                val_labels = []
-                val_predictions = []
-                val_total_loss = 0.0
-                val_n_batches = 0
-
-                with torch.no_grad():
-                    for data, labels in val_loader:
-                        data = self._move_to_device(data, self._device)
-                        labels = labels.to(self._device)
-
-                        outputs = self._model(data)
-                        val_batch_loss = self._loss_fn(outputs, labels)
-
-                        val_total_loss += float(val_batch_loss.item())
-                        val_n_batches += 1
-
-                        if self._num_classes == 2:
-                            logits = outputs
-                            preds = torch.sigmoid(logits).squeeze(-1)
-                            preds = (preds > 0.5).long()
-                        else:
-                            preds = torch.argmax(outputs, dim=1)
-
-                        val_predictions.extend(preds.cpu().tolist())
-                        val_labels.extend(labels.cpu().tolist())
-
-                if val_n_batches == 0:
-                    raise ValueError("val_loader produced 0 batches; cannot validate.")
-                
-                if val_n_batches > 0:
-                    val_mean_loss = val_total_loss / val_n_batches
-                    val_acc = accuracy_score(val_labels, val_predictions)
-                
-                    progress.console.print(f"[bold blue]Epoch {epoch}/{epochs}[/bold blue] Train Loss: {state.train_loss:.4f} | Val Loss: {val_mean_loss:.4f} | Val Acc: {val_acc:.4f}")
-                    
-
-                state.val_loss = val_total_loss / val_n_batches
-                state.acc = accuracy_score(val_labels, val_predictions)
-
-                progress.update(
-                    epoch_task,  # pyright: ignore[reportArgumentType]
-                    info=f"Train Mean Loss: {state.train_loss:.4f} | Val Loss: {state.val_loss:.4f} | Val Acc: {state.acc:.4f}",
-                )
-
-                if state.val_loss < state.best_val_loss:
-                    state.best_val_loss = state.val_loss
-
-                    # Update best state for improved val_loss
-                    self._best_state = state.clone(
-                        model_state_dict=self._model.state_dict(),
-                        optimizer_state_dict=self._optimizer.state_dict(),
-                    )
-                    self._best_model = deepcopy(self._model)
-                    self._best_model.load_state_dict(self._best_state.model_state_dict)  # pyright: ignore[reportArgumentType]
-
-                    if self._checkpoint is not None:
-                        self._checkpoint.save(self._best_state, is_best=True)
-
-                    state.patience_counter = 0
-                else:
-                    state.patience_counter += 1
-
-                if state.acc > state.best_acc:
-                    state.best_acc = state.acc
-
-            # --- CHECKPOINTING ---
-            if self._should_save_checkpoint(epoch, is_last_epoch=(epoch == epochs)):
-                state.model_state_dict = self._model.state_dict()
-                state.optimizer_state_dict = self._optimizer.state_dict()
-                cast(Checkpoint, self._checkpoint).save(state)
-
-            # --- EARLY STOPPING ---
-            if (
-                self._early_stopping_patience is not None
-                and state.patience_counter >= self._early_stopping_patience
-            ):
-                if val_loader is None:
-                    _reason = "training loss"
-                else:
-                    _reason = "validation loss"
-                self._logger.system_info(
-                    f"Early stopping triggered. "
-                    f"No improvement in {_reason} for {self._early_stopping_patience} epochs."
-                )
-                break
-
-        progress.stop()
+        pass
 
     def _replace_state(self, new_state: TrainingState):
         """Replace the current training state with a new state.
@@ -355,25 +200,4 @@ class Trainer(ABC):
         Returns:
             list: A list of predictions.
         """
-
-        self._model.eval()
-        predictions = []
-
-        def predict_batch(batch):
-            batch = self._move_to_device(batch, self._device)
-            logits = self._model(batch)
-            if self._num_classes == 2:
-                preds = torch.sigmoid(logits).squeeze(-1)
-                preds = (preds > 0.5).long()
-            else:
-                preds = torch.argmax(logits, dim=1)
-            predictions.extend(preds.cpu().tolist())
-
-        with torch.no_grad():
-            if isinstance(dataloader_or_batch, DataLoader):
-                for data, _ in dataloader_or_batch:
-                    predict_batch(data)
-            else:
-                predict_batch(dataloader_or_batch)
-
-        return predictions
+        pass

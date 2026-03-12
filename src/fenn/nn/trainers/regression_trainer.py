@@ -150,7 +150,7 @@ class RegressionTrainer(Trainer):
                 state.val_loss = None
 
                 progress.console.print(f"[bold blue]Epoch {epoch}/{epochs}[/bold blue] Train Loss: {state.train_loss:.4f}")
-                Logger().user_info(f"Epoch {epoch}/{epochs} - Train Loss: {state.train_loss:.4f}", display=False)
+                Logger().display_info(f"Epoch {epoch}/{epochs} - Train Loss: {state.train_loss:.4f}", display_on_terminal=False)
 
 
                 if state.train_loss < state.best_train_loss:
@@ -192,7 +192,7 @@ class RegressionTrainer(Trainer):
                     val_r2 = r2_score(val_labels, val_predictions)
                 
                     progress.console.print(f"[bold blue]Epoch {epoch}/{epochs}[/bold blue] Train Loss: {state.train_loss:.4f} | Val Loss: {val_mean_loss:.4f} | Val R2: {val_r2:.4f}")
-                    Logger().user_info(f"Epoch {epoch}/{epochs} - Train Loss: {state.train_loss:.4f} | Val Loss: {val_mean_loss:.4f} | Val R2: {val_r2:.4f}", display=False)
+                    Logger().display_info(f"Epoch {epoch}/{epochs} - Train Loss: {state.train_loss:.4f} | Val Loss: {val_mean_loss:.4f} | Val R2: {val_r2:.4f}", display_on_terminal=False)
 
                     
                 state.val_loss = val_total_loss / val_n_batches
@@ -239,9 +239,8 @@ class RegressionTrainer(Trainer):
                     _reason = "training loss"
                 else:
                     _reason = "validation loss"
-                self._logger.system_info(
-                    f"Early stopping triggered. "
-                    f"No improvement in {_reason} for {self._early_stopping_patience} epochs."
+                self._logger.display_info(
+                    f"Early stopping triggered. No improvement in {_reason} for {self._early_stopping_patience} epochs."
                 )
                 break
 

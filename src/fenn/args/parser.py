@@ -31,7 +31,7 @@ class Parser:
 
         if not os.path.isfile(self._config_file):
 
-            logger.system_exception(
+            logger.display_excpetion(
                 f"Configuration file {self._config_file} was not found."
             )
 
@@ -44,18 +44,6 @@ class Parser:
         # File exists → load YAML
         with open(self._config_file) as f:
             self._args = yaml.safe_load(f)
-
-        # Handle deprecated WANDB key
-        if self._args.get("wandb", {}).get("key"):
-            self._keystore.set_key(
-                "WANDB_API_KEY", self._args["wandb"]["key"]
-            )
-            self._args["wandb"].pop("key")
-
-            logger.system_warning(
-                "WANDB key in yaml file is deprecated. "
-                f"Please use {Fore.LIGHTYELLOW_EX}.env{Style.RESET_ALL} instead."
-            )
 
         return self._args
 
