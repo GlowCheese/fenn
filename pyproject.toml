@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fenn"
-version = "0.1.6"
+version = "0.1.7"
 description = "Friendly Environment for Neural Networks (fenn) is a simple framework that automates ML/DL workflows by providing prebuilt trainers, templates, logging, configuration management, and much more."
 
 authors = [
@@ -65,10 +65,6 @@ test = [
   "pytest-cov>=7.0.0",
   "requests-mock>=1.11.0",
   "Faker>=25.0.0"
-]
-
-extra = [
-  "loguru~=0.7.3"
 ]
 
 dev = [
