@@ -59,8 +59,7 @@ class ClassificationTrainer(Trainer):
             optim = optim,
             device = device,
             early_stopping_patience = early_stopping_patience,
-            checkpoint_config = checkpoint_config,
-            num_classes=num_classes
+            checkpoint_config = checkpoint_config
         )
 
         self._logger = Logger()
