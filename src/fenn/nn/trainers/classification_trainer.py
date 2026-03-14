@@ -42,13 +42,14 @@ class ClassificationTrainer(Trainer):
         early_stopping_patience: Optional[int] = None,
         checkpoint_config: Optional[Checkpoint] = None,
     ):
-        """Initialize a Trainer instance to fit a neural network model.
+        """Initialize a ClassificationTrainer instance.
 
         Args:
             model: The neural network model to train.
             loss_fn: The loss function to use.
             optim: The optimizer to use.
             num_classes: The number of classes to predict.
+            multi_label: Whether to use multi-label classification.
             device: The device on which the data will be loaded.
             early_stopping_patience: The number of epochs to wait before early stopping.
             checkpoint_config: The checkpoint configuration. If `None`, checkpointing is disabled.

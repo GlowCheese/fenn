@@ -121,6 +121,35 @@ app.set_config_file("my_file.yaml")
 app.run()
 ```
 
+### Training Models
+
+Use built-in trainers to handle your training loops with minimal boilerplate.
+
+```python
+from fenn.nn.trainers import ClassificationTrainer
+from fenn.nn.utils import Checkpoint
+
+@app.entrypoint
+def main(args):
+    # Configure checkpointing
+    checkpoint = Checkpoint(dir="checkpoints/", save_best=True)
+
+    # Initialize trainer
+    trainer = ClassificationTrainer(
+        model=model,
+        loss_fn=nn.CrossEntropyLoss(),
+        optim=optim.Adam(model.parameters()),
+        num_classes=2,
+        checkpoint_config=checkpoint
+    )
+
+    # Fit and Predict
+    trainer.fit(train_loader, epochs=10, val_loader=val_loader)
+    preds = trainer.predict(test_loader)
+```
+
+See [docs/trainers.md](docs/trainers.md) for more details.
+
 ### Run It
 
 ```bash
