@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Any, Callable, Optional
 
 from colorama import Fore, Style
@@ -21,6 +22,7 @@ class Fenn:
         self._parser: Parser = Parser()
         self._keystore: KeyStore = KeyStore()
         self._logger: Logger = Logger()
+        self._exporter: Exporter = Exporter()
 
         # DISCLAIMER:
         # This class is the base class for all Fenn applications.
@@ -102,3 +104,8 @@ class Fenn:
     @property
     def config_file(self) -> str:
         return self._config_file
+
+
+    @property
+    def export_dir(self) -> Path:
+        return self._exporter.export_dir

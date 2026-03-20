@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional
 
 
 class Exporter:
-    """Singleton responsible for centralized export directory management."""
+    """Singleton responsible for managing a single export directory."""
 
     _instance: Optional["Exporter"] = None
 
@@ -16,43 +16,22 @@ class Exporter:
         if getattr(self, "_initialized", False):
             return
 
-        self._root_dir = Path("exports")
-        self._project: Optional[str] = None
+        self._export_dir = Path("export")
         self._initialized = True
 
     def configure(self, args: Dict[str, Any]) -> Path:
-        """Configure the exporter from parsed YAML arguments."""
+        """Configure the export directory from arguments."""
 
         export_conf = args.get("export", {}) or {}
-        export_dir = export_conf.get("dir", "exports")
+        export_dir = export_conf.get("dir", "export")
 
-        self._root_dir = Path(export_dir).expanduser()
-        self._project = str(args.get("project")) if args.get("project") else None
+        self._export_dir = Path(export_dir).expanduser()
+        self._export_dir.mkdir(parents=True, exist_ok=True)
 
-        self._root_dir.mkdir(parents=True, exist_ok=True)
-        return self._root_dir
+        return self._export_dir
 
     @property
-    def root_dir(self) -> Path:
-        """Return the configured export root directory."""
-        return self._root_dir
-
-    def get_export_dir(
-        self,
-        *parts: str,
-        include_project: bool = True,
-        create: bool = True,
-    ) -> Path:
-        """Return a resolved export directory beneath the configured root."""
-
-        export_dir = self._root_dir
-        if include_project and self._project:
-            export_dir = export_dir / self._project
-
-        for part in parts:
-            export_dir = export_dir / part
-
-        if create:
-            export_dir.mkdir(parents=True, exist_ok=True)
-
-        return export_dir
+    def export_dir(self) -> Path:
+        """Return the export directory, ensuring it exists."""
+        self._export_dir.mkdir(parents=True, exist_ok=True)
+        return self._export_dir
