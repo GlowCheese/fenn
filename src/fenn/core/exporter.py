@@ -1,6 +1,9 @@
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from fenn.args import Parser
+from torch.onnx import export
+
 
 class Exporter:
     """Singleton responsible for managing a single export directory."""
@@ -16,17 +19,22 @@ class Exporter:
         if getattr(self, "_initialized", False):
             return
 
-        self._export_dir = Path("export")
+        self._export_dir = Path("export/fenn")
         self._initialized = True
 
     def configure(self, args: Dict[str, Any]) -> Path:
         """Configure the export directory from arguments."""
 
         export_conf = args.get("export", {}) or {}
-        export_dir = export_conf.get("dir", "export")
 
-        self._export_dir = Path(export_dir).expanduser()
-        self._export_dir.mkdir(parents=True, exist_ok=True)
+        export_dir = export_conf.get("dir", "export")
+        export_dir = Path(export_dir)
+        export_dir.mkdir(parents=True, exist_ok=True)
+        export_project_dir = args.get("project", "fenn")
+        export_project_dir = export_dir / export_project_dir
+        export_project_dir.mkdir(parents=True, exist_ok=True)
+
+        self._export_dir = export_project_dir
 
         return self._export_dir
 

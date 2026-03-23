@@ -15,7 +15,7 @@ from torch.utils.data import DataLoader
 
 from fenn.logging import Logger
 from fenn.nn.utils import Checkpoint, ModelPrettyPrinter, TrainingState
-
+from fenn.core import Exporter
 
 class Trainer(ABC):
     """The base Trainer abstract class for classification/Regression tasks."""
@@ -43,6 +43,7 @@ class Trainer(ABC):
         """
 
         self._logger = Logger()
+        self._exporter = Exporter()
 
         self._loss_fn = loss_fn
         self._num_classes = 2
@@ -186,6 +187,9 @@ class Trainer(ABC):
 
         new_state = self._checkpoint.load_best()
         self._replace_state(new_state)
+
+    def save_model(self, model_name : str = "model.pth"):
+        torch.save(self._model.state_dict(), (self._exporter.export_dir / model_name))
 
     @abstractmethod
     def predict(self, dataloader_or_batch: Union[DataLoader, torch.Tensor]):
