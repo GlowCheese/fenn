@@ -8,7 +8,25 @@ from fenn.nn.utils.state import TrainingState
 
 
 class Checkpoint:
-    """Checkpoint training state at the given epochs."""
+    """Checkpoint training state at given epochs and/or always the best model.
+
+    Saves full :class:`TrainingState` snapshots (model weights, optimizer
+    state, epoch counter, metrics) during training so that training can be
+    resumed or the best model restored later.
+
+    Args:
+        name: Base filename for checkpoint files (without extension).
+        dir: Directory to save checkpoint files in.
+        epochs: When to save checkpoints — an ``int`` saves every N epochs,
+            a ``list[int]`` saves at specific epochs, or ``None`` to save
+            only the best model.
+        save_best: If ``True``, save the best model seen so far, updated
+            whenever validation/training loss improves.
+
+    Example:
+        >>> checkpoint = Checkpoint(dir="checkpoints/", epochs=5, save_best=True)
+        >>> trainer = Trainer(model, loss_fn, optimizer, checkpoint_config=checkpoint)
+    """
 
     def __init__(
         self,

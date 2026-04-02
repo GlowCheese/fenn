@@ -26,9 +26,38 @@ from .trainer import Trainer
 
 
 class ClassificationTrainer(Trainer):
-    """
-    ClassificationTrainer is an extension extends the base Trainer to support
-    binary, multi-class, and multi-label classification support.
+    """A trainer for classification tasks with PyTorch models.
+    
+    Supports binary, multi-class, and multi-label classification by adapting
+    the loss computation and prediction logic based on the task type. Handles
+    both single-label (``num_classes == 2`` → binary, ``> 2`` → multiclass) and
+    multi-label (``multi_label=True``) scenarios.
+    
+    The automatic task type detection configures:
+    - Binary: sigmoid activation, BCE loss, threshold at 0.5
+    - Multiclass: softmax activation, cross-entropy loss
+    - Multi-label: sigmoid activation, binary cross-entropy per label
+    
+    Args:
+        model: The neural network model, expected to output logits for
+            the classification task.
+        loss_fn: Loss function compatible with the task type (e.g. BCEWithLogitsLoss
+            for binary/multi-label, CrossEntropyLoss for multiclass).
+        optim: Optimizer for updating trainable parameters.
+        num_classes: Number of classes (or labels in multi-label mode). Must be ``>= 1``.
+        multi_label: Whether this is a multi-label classification problem.
+            Requires ``num_classes >= 2``.
+        device: Device to run training on (``'cpu'``, ``'cuda'``, or ``'mps'``).
+        early_stopping_patience: Stop training after this many epochs without
+            improvement in validation/training loss. ``None`` disables.
+        checkpoint_config: Optional :class:`~fenn.nn.utils.Checkpoint` for
+            saving training state to disk.
+    
+    Note:
+        For binary classification (``num_classes == 2``, ``multi_label=False``),
+        labels should be ``[0, 1]`` shaped tensors. For multiclass, labels should
+        be class indices. For multi-label, labels should be binary vectors of length
+        ``num_classes``.
     """
 
     def __init__(

@@ -21,8 +21,24 @@ from .trainer import Trainer
 
 
 class RegressionTrainer(Trainer):
-    """
-    RegressionTrainer is an extension extends the base Trainer to Regression support.
+    """A trainer for regression tasks with PyTorch models.
+    
+    Extends the base :class:`Trainer` with regression-specific metrics (R² score,
+    MSE) and continuous-value prediction logic. Handles single-target regression
+    with optional validation and early stopping.
+    
+    Args:
+        model: The neural network model, expected to output continuous predictions.
+        loss_fn: Loss function suitable for regression (e.g. MSELoss, HuberLoss).
+        optim: Optimizer for updating trainable parameters.
+        return_model: Which model version to return after training. ``'last'``
+            returns the final checkpoint, ``'best'`` returns the best model
+            by validation/training loss.
+        device: Device to run training on (``'cpu'``, ``'cuda'``, or ``'mps'``).
+        early_stopping_patience: Stop training after this many epochs without
+            improvement in loss. ``None`` disables.
+        checkpoint_config: Optional :class:`~fenn.nn.utils.Checkpoint` for
+            saving training state to disk.
     """
 
     def __init__(
