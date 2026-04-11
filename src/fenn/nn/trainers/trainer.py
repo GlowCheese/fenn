@@ -18,7 +18,18 @@ from fenn.nn.utils import Checkpoint, ModelPrettyPrinter, TrainingState
 from fenn.core import Exporter
 
 class Trainer(ABC):
-    """The base Trainer abstract class for classification/Regression tasks."""
+    """The base Trainer abstract class for classification and regression tasks.
+
+    Provides a common training loop with support for early stopping,
+    checkpointing, and validation monitoring. Subclasses must implement
+    :meth:`fit` to define the per-epoch training logic and :meth:`predict`
+    to generate predictions from a model.
+
+    Subclasses:
+        - :class:`ClassificationTrainer` for classification tasks.
+        - :class:`RegressionTrainer` for regression tasks.
+        - :class:`LoRATrainer` for parameter-efficient fine-tuning.
+    """
 
     @abstractmethod
     def __init__(
@@ -76,7 +87,19 @@ class Trainer(ABC):
         summary = ModelPrettyPrinter(self._model).render()
         self._logger.display_info(summary, display_on_terminal=False)
 
-    def _move_to_device(self, batch, device: Union[torch.device, str]) -> Any:
+    def _move_to_device(self, batch: Any, device: Union[torch.device, str]) -> Any:
+        """Recursively move tensor data to the specified device.
+
+        Handles tensors, lists, tuples, and dictionaries of tensors.
+        Non-tensor values are passed through unchanged.
+
+        Args:
+            batch: Input data — a tensor, list, tuple, or dict of tensors.
+            device: Target device (``torch.device`` or string like ``'cuda'``).
+
+        Returns:
+            The input data with all tensors moved to the target device.
+        """
         if torch.is_tensor(batch):
             return batch.to(device)
         if isinstance(batch, (list, tuple)):
@@ -86,14 +109,18 @@ class Trainer(ABC):
         return batch
 
     def _should_save_checkpoint(self, epoch: int, is_last_epoch: bool = False) -> bool:
-        """Check if a checkpoint should be saved at the given epoch.
+        """Check whether a checkpoint should be saved at the given epoch.
+
+        Evaluates the checkpoint configuration to determine if the current
+        epoch qualifies for a checkpoint save based on fixed intervals,
+        explicit epoch lists, or being the final training epoch.
 
         Args:
-            epoch: The current epoch number. (1-indexed)
-            is_last_epoch: Whether this is the last epoch.
+            epoch: The current epoch number (1-indexed).
+            is_last_epoch: Whether this is the final training epoch.
 
         Returns:
-            True if a checkpoint should be saved, False otherwise.
+            ``True`` if a checkpoint should be saved, ``False`` otherwise.
         """
 
         if self._checkpoint is None:
@@ -121,34 +148,44 @@ class Trainer(ABC):
         val_loader: Optional[DataLoader] = None,
         val_epochs: int = 1,
     ):
-        """Train the model with optional validation and early stopping.
+        """Train the model for a fixed number of epochs.
 
-        The behaviour depends on the combination of `val_loader` and
-        ``early_stopping_patience``:
+        Runs the full training loop including forward/backward passes,
+        validation evaluation, checkpointing, and early stopping.
+        The exact behavior depends on the validation and early stopping
+        configuration:
 
         * No validation loader, no early stopping: run full ``epochs``.
         * No validation loader, early stopping set: stop on training loss.
-        * Validation loader provided, no early stopping: evaluate every epoch
-          but continue regardless of metrics.
-        * Validation loader provided and early stopping set: monitor
-          validation loss and stop when it plateaus.
+        * Validation loader provided, no early stopping: evaluate every
+          epoch but continue regardless of metrics.
+        * Validation loader and early stopping set: monitor validation
+          loss and stop when it plateaus for ``early_stopping_patience``
+          epochs.
 
         Args:
-            train_loader: DataLoader for training data.
-            epochs: Total number of epochs to train for.
-            val_loader: DataLoader for validation data (optional).
-            val_epochs: How often to evaluate on validation set (in epochs).
+            train_loader: PyTorch ``DataLoader`` yielding ``(data, labels)``
+                batches for training.
+            epochs: Total number of training epochs. If resuming from a
+                checkpoint, only the remaining epochs are run.
+            val_loader: Optional ``DataLoader`` for validation evaluation.
+            val_epochs: How frequently to evaluate on the validation set
+                (e.g. ``val_epochs=2`` means every 2 epochs).
 
         Returns:
-            The trained model (returned according to ``return_model``).
+            The trained model.
         """
         pass
 
     def _replace_state(self, new_state: TrainingState) -> None:
-        """Replace the current training state with a new state.
+        """Replace the current training state with a previously saved state.
+
+        Loads the model weights and optimizer state from the provided
+        state, effectively restoring training to a checkpointed point.
 
         Args:
-            new_state: The new state to replace the current state with.
+            new_state: A :class:`~fenn.nn.utils.TrainingState` containing
+                the model and optimizer state dicts to restore.
         """
         self._state = new_state
         if new_state.model_state_dict:
@@ -157,10 +194,17 @@ class Trainer(ABC):
             self._optimizer.load_state_dict(new_state.optimizer_state_dict)
 
     def load_checkpoint(self, checkpoint_path: Union[str, Path]) -> None:
-        """Load a checkpoint from a given path to update current training state.
+        """Load a checkpoint from the given file path and restore training state.
+
+        Restores the model weights, optimizer state, and epoch counter from
+        a previously saved checkpoint file.
 
         Args:
-            checkpoint_path: Path to the checkpoint file.
+            checkpoint_path: Path to the ``.pt`` checkpoint file.
+
+        Raises:
+            ValueError: If no checkpoint configuration was provided at init.
+            FileNotFoundError: If the checkpoint file does not exist.
         """
         if self._checkpoint is None:
             raise ValueError("Cannot load checkpoint: checkpoint_config is missing.")
@@ -169,10 +213,17 @@ class Trainer(ABC):
         self._replace_state(new_state)
 
     def load_checkpoint_at_epoch(self, epoch: int) -> None:
-        """Load the checkpoint at the given epoch to update current training state.
+        """Load the checkpoint saved at a specific epoch.
+
+        Searches the checkpoint directory for the saved state at the
+        requested epoch and restores the model and optimizer.
 
         Args:
-            epoch: Epoch to load the checkpoint at.
+            epoch: The epoch whose checkpoint to load (1-indexed).
+
+        Raises:
+            ValueError: If no checkpoint configuration was provided at init.
+            FileNotFoundError: If no checkpoint exists for the given epoch.
         """
         if self._checkpoint is None:
             raise ValueError("Cannot load checkpoint: checkpoint_config is missing.")
@@ -181,7 +232,15 @@ class Trainer(ABC):
         self._replace_state(new_state)
 
     def load_best_checkpoint(self) -> None:
-        """Load the best checkpoint to update current training state."""
+        """Load the best-performing checkpoint into the trainer's model.
+
+        Restores the model weights from the checkpoint with the lowest
+        validation (or training) loss recorded during training.
+
+        Raises:
+            ValueError: If no checkpoint configuration was provided at init.
+            FileNotFoundError: If no best checkpoint file exists.
+        """
         if self._checkpoint is None:
             raise ValueError("Cannot load checkpoint: checkpoint_config is missing.")
 
@@ -193,12 +252,17 @@ class Trainer(ABC):
 
     @abstractmethod
     def predict(self, dataloader_or_batch: Union[DataLoader, torch.Tensor]):
-        """Predicts the output of the model for a given dataloader or batch.
+        """Generate predictions from the trained model.
+
+        Runs inference on the provided data without computing gradients,
+        returning model predictions in the same format as the training
+        labels.
 
         Args:
-            dataloader_or_batch: A DataLoader or a torch tensor.
+            dataloader_or_batch: Either a PyTorch ``DataLoader`` yielding
+                data batches, or a single tensor batch.
 
         Returns:
-            list: A list of predictions.
+            A list of predictions (one per sample).
         """
         pass
