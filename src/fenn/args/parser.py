@@ -16,6 +16,8 @@ class Parser:
         return cls._instance
 
     def __init__(self) -> None:
+        if hasattr(self, "_initialized"):
+            return
 
         self._config_file: str = "fenn.yaml"
         self._args: Dict[str, Any] = {}
@@ -23,6 +25,8 @@ class Parser:
         self._keystore: KeyStore = KeyStore()
 
         init(autoreset=True)
+
+        self._initialized = True
 
     def load_configuration(self) -> Any:
         """Loads the YAML configuration into the _args dictionary."""
