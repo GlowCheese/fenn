@@ -1,3 +1,4 @@
+import inspect
 from copy import deepcopy
 from typing import Dict, List, Optional, Union, cast
 
@@ -103,6 +104,17 @@ class LoRATrainer(Trainer):
         )
         model = get_peft_model(model, lora_config)
         model.print_trainable_parameters()
+
+        # The optimizer was built before get_peft_model injected the LoRA parameters,
+        # so those new tensors are not tracked. Rebuild it now with only the trainable
+        # (LoRA) parameters, preserving the original optimizer class and hyperparameters.
+        # Filter optim.defaults to valid constructor args only — PyTorch adds internal
+        # keys (e.g. decoupled_weight_decay) that are not accepted by __init__.
+        optimizer_class = type(optim)
+        valid_init_params = set(inspect.signature(optimizer_class.__init__).parameters) - {"self", "params"}
+        optimizer_defaults = {k: v for k, v in optim.defaults.items() if k in valid_init_params}
+        trainable_params = [p for p in model.parameters() if p.requires_grad]
+        optim = optimizer_class(trainable_params, **optimizer_defaults)
 
         super().__init__(
             model=model,
