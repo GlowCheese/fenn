@@ -93,7 +93,7 @@ def run(host: str = "127.0.0.1", port: int = 5000, debug: bool = False,
         scanner.add_dirs(log_dirs)
     logging.getLogger("werkzeug").setLevel(logging.ERROR)
     app.logger.setLevel(logging.ERROR)
-    print(f"\n  Fenn Dashboard  →  http://{host}:{port}\n")
+    print(f"Fenn dashboard started at http://{host}:{port}")
     from werkzeug.serving import make_server
     make_server(host, port, app).serve_forever()
 
