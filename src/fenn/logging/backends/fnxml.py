@@ -15,6 +15,7 @@ class FnXmlBackend:
         self._session_id: Optional[str] = None
         self._project: Optional[str] = None
         self._config_flat: Dict[str, str] = {}
+        self._started_at: Optional[datetime] = None
 
     # ---- public (system tags) ----
     def system_info(self, message: str) -> None:
@@ -49,7 +50,8 @@ class FnXmlBackend:
         os.makedirs(log_root, exist_ok=True)
         os.makedirs(log_dir, exist_ok=True)
 
-        started = datetime.now().replace(microsecond=0).isoformat(" ")
+        self._started_at = datetime.now().replace(microsecond=0)
+        started = self._started_at.isoformat(" ")
         with open(self._log_file, "w", encoding="utf-8") as f:
             f.write('<?xml version="1.0" encoding="utf-8"?>\n')
             f.write(
@@ -65,7 +67,20 @@ class FnXmlBackend:
         if not self._enabled or not self._log_file:
             return
 
+        ended_at = datetime.now().replace(microsecond=0)
+        ended = ended_at.isoformat(" ")
+        duration_s = (
+            int((ended_at - self._started_at).total_seconds())
+            if self._started_at
+            else 0
+        )
+
         with open(self._log_file, "a", encoding="utf-8") as f:
+            f.write(
+                f'  <meta ended="{self._escape(ended)}" '
+                f'duration_s="{duration_s}" '
+                f'status="completed" />\n'
+            )
             f.write("</fenn-log>\n")
 
         self._enabled = False

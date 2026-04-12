@@ -1,5 +1,6 @@
 import argparse
 
+import fenn.cli.dashboard as dashboard
 import fenn.cli.list as list
 import fenn.cli.pull as pull
 
@@ -40,6 +41,27 @@ def build_parser() -> argparse.ArgumentParser:
         "list", help="List available templates in the fenn templates repository"
     )
     p_list.set_defaults(func=list.execute)
+
+    # ========= DASHBOARD =========
+    p_dash = subparsers.add_parser(
+        "dashboard", help="Launch the Fenn log-browser dashboard"
+    )
+    p_dash.add_argument(
+        "--log-dir",
+        nargs="+",
+        metavar="DIR",
+        help="Extra directories to scan for .fn files",
+    )
+    p_dash.add_argument(
+        "--port", type=int, default=5000, help="Port to bind (default: 5000)"
+    )
+    p_dash.add_argument(
+        "--host", default="127.0.0.1", help="Host to bind (default: 127.0.0.1)"
+    )
+    p_dash.add_argument(
+        "--debug", action="store_true", help="Run Flask in debug mode"
+    )
+    p_dash.set_defaults(func=dashboard.execute)
 
     return parser
 

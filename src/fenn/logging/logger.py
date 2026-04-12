@@ -74,22 +74,20 @@ class Logger:
         self._logging_backend.info(message, display_on_terminal, write_on_file)
 
         # system_info is called before arguments are loaded, so we need to check if self._args is not None before accessing it
-        if self._args and self._args.get("logger", {}).get("fnxml", False):
+        if self._args:
             self._fnxml_backend.system_info(message)
 
     def display_excpetion(
         self, message: str, display_on_terminal=True, write_on_file=True
     ) -> None:
         self._logging_backend.exception(message, display_on_terminal, write_on_file)
-        if self._args.get("logger", {}).get("fnxml", False):
-            self._fnxml_backend.system_exception(message)
+        self._fnxml_backend.system_exception(message)
 
     def display_warning(
         self, message: str, display_on_terminal=True, write_on_file=True
     ) -> None:
         self._logging_backend.warning(message, display_on_terminal, write_on_file)
-        if self._args.get("logger", {}).get("fnxml", False):
-            self._fnxml_backend.user_warning(message)
+        self._fnxml_backend.user_warning(message)
 
     def write_config(self, message: str) -> None:
 
@@ -115,8 +113,7 @@ class Logger:
         if hasattr(self._logging_backend, "flush_config_table"):
             self._logging_backend.flush_config_table()
 
-        if self._args.get("logger", {}).get("fnxml", False):
-            self._fnxml_backend.write_config(message)
+        self._fnxml_backend.write_config(message)
 
     # --------------------------
     # lifecycle
@@ -124,9 +121,7 @@ class Logger:
     def start(self) -> None:
         self._args = self._parser.args
         self._logging_backend.start(self._args)
-
-        if self._args.get("logger", {}).get("fnxml", False):
-            self._fnxml_backend.start(self._args)
+        self._fnxml_backend.start(self._args)
 
         if self._args.get("wandb"):
             self._wandb_backend.start(self._args)
@@ -142,8 +137,7 @@ class Logger:
             self._wandb_backend.stop()
         if self._args.get("tensorboard"):
             self._tensorboard_backend.stop()
-        if self._args.get("logger", {}).get("fnxml", False):
-            self._fnxml_backend.stop()
+        self._fnxml_backend.stop()
 
     @staticmethod
     def _flatten_dict(d: dict, parent_key: str = "", sep: str = "/") -> dict:
